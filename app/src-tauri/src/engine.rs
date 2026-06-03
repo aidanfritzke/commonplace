@@ -23,14 +23,16 @@ pub const HOST: &str = "127.0.0.1";
 pub const CHAT_PORT: u16 = 11500;
 pub const EMBED_PORT: u16 = 11501;
 
-pub const CHAT_MODEL_FILE: &str = "Qwen2.5-3B-Instruct-Q4_K_M.gguf";
+// Chat model is Phi-3.5-mini-instruct (MIT) so the whole product can be shipped
+// free/open-source; embeddings are nomic-embed-text v1.5 (Apache-2.0).
+pub const CHAT_MODEL_FILE: &str = "Phi-3.5-mini-instruct-Q4_K_M.gguf";
 pub const EMBED_MODEL_FILE: &str = "nomic-embed-text-v1.5.f16.gguf";
-pub const CHAT_MODEL_NAME: &str = "Qwen2.5-3B-Instruct";
+pub const CHAT_MODEL_NAME: &str = "Phi-3.5-mini";
 
 // First-run download sources (HEAD-verified). Used only when the models are not
 // already present in the model dir.
 const CHAT_MODEL_URL: &str =
-    "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf";
+    "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf";
 const EMBED_MODEL_URL: &str =
     "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.f16.gguf";
 

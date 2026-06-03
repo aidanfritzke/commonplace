@@ -30,7 +30,7 @@ machine. Nothing leaves it.
   `app/vendor-src/`).
 - **Inference:** two bundled **llama.cpp** `llama-server` processes the app spawns on launch
   (chat + embeddings) and kills on exit — guaranteed even on crash via a Windows Job Object.
-  Chat model: Qwen2.5-3B-Instruct (Q4_K_M); embeddings: nomic-embed-text v1.5.
+  Chat model: Phi-3.5-mini-instruct (MIT); embeddings: nomic-embed-text v1.5 (Apache-2.0).
 - **Index:** **LanceDB** vector store in the app-data dir; incremental, survives restarts.
 - **Backend commands** (`app/src-tauri/src/`): `lib.rs` (vault file I/O, chat streaming),
   `index.rs` (embeddings + LanceDB search), `engine.rs` (engine lifecycle + first-run
@@ -76,5 +76,6 @@ design history. A parked future direction is Zettelkasten-style linked permanent
 
 ## License
 
-Not yet chosen — add a `LICENSE` before publishing. Note that the (separately downloaded)
-llama.cpp engine and the Qwen / nomic model weights carry their own licenses.
+**MIT** — see `LICENSE`. Third-party components (llama.cpp, CodeMirror, Tauri, LanceDB)
+and the downloaded models (Phi-3.5-mini · MIT, nomic-embed-text · Apache-2.0) carry their
+own permissive licenses; see `THIRD-PARTY-LICENSES.md`.
