@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Commonplace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF6; --surface:#FFFFFF; --ink:#1F1B16; --ink-soft:#6B6457; --ink-faint:#A7A092;
+    --line:#E7E1D6; --line-strong:#D8D0C2; --accent:#8C3A2B; --accent-soft:#F3E8E3; --ok:#5C8A56;
+    --read:"Newsreader",Georgia,"Times New Roman",serif;
+    --ui:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  [data-theme="dark"]{
+    --bg:#1A1714; --surface:#221E1A; --ink:#ECE6DA; --ink-soft:#A89F8E; --ink-faint:#6E6557;
+    --line:#322C25; --line-strong:#41392F; --accent:#D98A6A; --accent-soft:#2E211B; --ok:#7FB07A;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:13px;
+    display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased;
+    transition:background .3s ease,color .3s ease;user-select:none}
+  .topbar,.statusbar{display:flex;align-items:center;justify-content:space-between;
+    padding:0 18px;color:var(--ink-faint);font-size:12px;letter-spacing:.2px;flex:0 0 auto;
+    transition:opacity .25s ease}
+  .topbar{height:46px;border-bottom:1px solid var(--line)}
+  .statusbar{height:34px;border-top:1px solid var(--line)}
+  body.focus .topbar,body.focus .statusbar{opacity:0;pointer-events:none}
+  .topbar .path{color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+  .topbar .tools{display:flex;gap:14px}
+  .tools b{cursor:pointer;color:var(--ink-faint);font-weight:400}
+  .tools b:hover{color:var(--ink-soft)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:7px;vertical-align:1px}
+  .dot.off{background:var(--accent)}
+  .left,.right{display:inline-flex;align-items:center}
+  .right{gap:18px}
+
+  .stage{flex:1 1 auto;overflow-y:auto;display:flex;justify-content:center}
+  .column{width:100%;max-width:720px;padding:54px 30px 110px;animation:rise .5s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  #editor{width:100%}
+  .cm-editor{background:transparent}
+  .cm-editor .cm-content{user-select:text}
+  /* focus mode: dim every paragraph except the one with the caret */
+  body.focus .cm-line{opacity:.25;transition:opacity .25s ease}
+  body.focus .cm-activeLine{opacity:1}
+
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:0 24px}
+  .empty h1{font-family:var(--read);font-weight:400;font-size:34px;margin:0;color:var(--ink)}
+  .empty p{margin:0;color:var(--ink-faint);font-size:13px}
+  .btn{font-family:var(--ui);font-size:12px;color:var(--ink-soft);background:transparent;
+    border:1px solid var(--line-strong);border-radius:7px;padding:9px 16px;cursor:pointer;
+    letter-spacing:.3px;transition:background .15s ease,border-color .15s ease}
+  .btn:hover{background:var(--surface);border-color:var(--accent)}
+  .btn kbd{color:var(--ink-faint);margin-left:8px}
+  .hidden{display:none!important}
+
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.30);backdrop-filter:blur(2px);
+    display:flex;justify-content:center;align-items:flex-start;padding-top:13vh;z-index:40;
+    opacity:0;pointer-events:none;transition:opacity .15s ease}
+  [data-theme="dark"] .overlay{background:rgba(0,0,0,.5)}
+  .overlay.open{opacity:1;pointer-events:auto}
+  .panel{width:540px;max-width:90vw;background:var(--surface);border:1px solid var(--line-strong);
+    border-radius:13px;box-shadow:0 24px 64px rgba(0,0,0,.18);overflow:hidden;
+    transform:translateY(-8px) scale(.99);transition:transform .15s ease}
+  .overlay.open .panel{transform:none}
+  .panel input{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;
+    padding:17px 19px;font-family:var(--ui);font-size:15px;color:var(--ink);outline:0}
+  .panel input::placeholder{color:var(--ink-faint)}
+  .rows{padding:7px;max-height:46vh;overflow-y:auto}
+  .row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    padding:11px 14px;margin:3px 6px;border-radius:8px;cursor:pointer}
+  .row.active{background:var(--accent-soft)}
+  .row .lbl{font-size:14px;color:var(--ink)}
+  .row .lbl em{color:var(--accent);font-style:normal}
+  .row .hint{font-size:12px;color:var(--ink-faint);white-space:nowrap}
+  .foot{padding:11px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-faint)}
+
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:440px;max-width:92vw;background:var(--surface);
+    border-left:1px solid var(--line-strong);box-shadow:-22px 0 64px rgba(0,0,0,.12);z-index:30;
+    display:flex;flex-direction:column;transform:translateX(101%);transition:transform .22s ease}
+  .drawer.open{transform:none}
+  .drawer .dhead{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;
+    border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-soft);letter-spacing:.4px;text-transform:uppercase}
+  .drawer .dhead .x{cursor:pointer;color:var(--ink-faint);font-size:15px}
+  .drawer .dhead .x:hover{color:var(--ink)}
+  .dbody{flex:1;overflow-y:auto;padding:20px;user-select:text}
+  .answer{font-family:var(--read);font-size:17px;line-height:1.72;color:var(--ink);white-space:pre-wrap}
+  .answer.thinking{color:var(--ink-faint);font-family:var(--ui);font-size:13px}
+  .rel{display:block;padding:11px 13px;border:1px solid var(--line);border-radius:9px;margin-bottom:9px;
+    cursor:pointer;transition:border-color .15s ease,background .15s ease}
+  .rel:hover{border-color:var(--accent);background:var(--bg)}
+  .rel .n{font-family:var(--ui);font-size:13px;color:var(--ink)}
+  .rel .s{font-family:var(--read);font-size:14px;color:var(--ink-faint);margin-top:4px;line-height:1.5;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .err{color:var(--accent);font-family:var(--ui);font-size:13px;line-height:1.6;white-space:pre-wrap}
+</style>
+</head>
+<body data-theme="light">
+
+  <div class="topbar">
+    <span class="path" id="path">no folder open</span>
+    <span class="tools">
+      <b id="t-focus" title="Focus mode (Ctrl+.)">focus</b>
+      <b id="t-theme" title="Toggle theme">theme</b>
+    </span>
+  </div>
+
+  <div class="empty" id="empty">
+    <h1>A quiet place for your notes.</h1>
+    <p>Open a folder of Markdown files. Everything stays on your machine.</p>
+    <button class="btn" id="open1">open folder <kbd>Ctrl+O</kbd></button>
+  </div>
+
+  <div class="stage hidden" id="stage">
+    <div class="column">
+      <div id="editor"></div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span class="left"><span class="dot" id="dot"></span><span id="model">offline</span></span>
+    <span class="right">
+      <span id="state" title="Notes autosave as you type">markdown</span>
+      <span title="New note">Ctrl+N  new</span>
+      <span title="Find / jump to a note">Ctrl+P  files</span>
+      <span title="Ask · summarize · rewrite · delete">Ctrl+K  ask</span>
+      <span title="Save &amp; re-index now (notes autosave anyway)">Ctrl+S  save</span>
+    </span>
+  </div>
+
+  <!-- quick open -->
+  <div class="overlay" id="ov-open">
+    <div class="panel">
+      <input id="q-open" placeholder="Jump to a note…" autocomplete="off" />
+      <div class="rows" id="open-rows"></div>
+      <div class="foot">↑↓ to move · enter to open · esc to close</div>
+    </div>
+  </div>
+
+  <!-- ai palette -->
+  <div class="overlay" id="ov-ask">
+    <div class="panel">
+      <input id="q-ask" placeholder="Ask about your notes…" autocomplete="off" />
+      <div class="rows" id="ask-rows">
+        <div class="row active" data-act="ask"><span class="lbl">Ask about your notes</span><span class="hint">answer from your vault</span></div>
+        <div class="row" data-act="related"><span class="lbl">Find related notes</span><span class="hint">by meaning</span></div>
+        <div class="row" data-act="summarize"><span class="lbl">Summarize this note</span><span class="hint">current page</span></div>
+        <div class="row" data-act="continue"><span class="lbl">Continue writing</span><span class="hint">at the cursor</span></div>
+        <div class="row" data-act="rewrite"><span class="lbl">Rewrite selection</span><span class="hint">replace highlighted</span></div>
+        <div class="row" data-act="delete"><span class="lbl">Delete note</span><span class="hint">to Recycle Bin</span></div>
+      </div>
+      <div class="foot">enter runs the highlighted action · esc to close</div>
+    </div>
+  </div>
+
+  <!-- new note -->
+  <div class="overlay" id="ov-new">
+    <div class="panel">
+      <input id="q-new" placeholder="Name your note…" autocomplete="off" />
+      <div class="foot" id="new-foot">enter to create · esc to cancel</div>
+    </div>
+  </div>
+
+  <!-- first-run setup -->
+  <div class="overlay" id="ov-setup">
+    <div class="panel" style="width:480px">
+      <div style="padding:22px 22px 6px">
+        <div style="font-family:var(--read);font-size:19px;color:var(--ink);margin-bottom:7px">Setting up Commonplace</div>
+        <div style="color:var(--ink-faint);font-size:12px;line-height:1.55">Downloading the local AI model. This happens once (~2 GB); afterwards everything runs offline on your machine.</div>
+      </div>
+      <div style="padding:14px 22px 6px">
+        <div id="setup-file" style="font-size:12px;color:var(--ink-soft);margin-bottom:9px">preparing…</div>
+        <div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden">
+          <div id="setup-bar" style="height:100%;width:0;background:var(--accent);transition:width .25s ease"></div>
+        </div>
+        <div id="setup-pct" style="font-size:11px;color:var(--ink-faint);margin-top:9px"></div>
+      </div>
+      <div class="foot" id="setup-foot">please keep the window open…</div>
+    </div>
+  </div>
+
+  <!-- result drawer -->
+  <div class="drawer" id="drawer">
+    <div class="dhead"><span id="dtitle">result</span><span class="x" id="dclose">✕</span></div>
+    <div class="dbody" id="dbody"></div>
+  </div>
+
+<!-- vendored CodeMirror 6 (bundled offline; exposes window.CM) -->
+<script src="vendor/codemirror.js"></script>
+<script>
+/* ============================================================
+   Commonplace — native (Tauri 2) frontend.
+
+   Buildless: uses the Tauri global bridge (withGlobalTauri:true)
+   instead of npm imports, so this stays a single self-contained
+   HTML file like v0. All file I/O and inference are Rust commands
+   (see src-tauri/src/lib.rs) — no CORS, no browser fs limits.
+   ============================================================ */
+const T = window.__TAURI__;
+const invoke = T.core.invoke;
+const Channel = T.core.Channel;
+
+/* CONFIG — models are read/written through the Rust side; these are
+   just the defaults shown until the backend reports the active model. */
+const CHAT_MODEL  = "llama3.2";
+const EMBED_MODEL = "nomic-embed-text";
+
+/* ---- state ---- */
+let dirHandle = null;           // vault root path (string)
+let files = [];                 // [{path, name, rel}]  path = absolute, rel = vault-relative
+let current = null;             // {path, name, rel}
+let dirty = false;
+const fileText = new Map();     // path -> latest text
+
+/* ---- tiny dom helpers ---- */
+const $ = s => document.querySelector(s);
+const setState  = t => $("#state").textContent = t;
+const setModel  = t => $("#model").textContent = t;
+const setOnline = ok => $("#dot").classList.toggle("off", !ok);
+setModel("offline · " + CHAT_MODEL);
+
+/* ============================================================
+   VAULT — file I/O via native Rust commands (Tauri).
+   Mirrors the v0 `vault` seam: same call shape, native backend.
+   ============================================================ */
+const vault = {
+  async openFolder(){
+    const dir = await invoke("pick_folder");      // native folder picker; null if cancelled
+    if (!dir) return null;
+    dirHandle = dir;
+    files = await invoke("list_markdown", { dir });
+    return files;
+  },
+  async read(f){ return await invoke("read_file", { path: f.path }); },
+  async write(f, text){ await invoke("write_file", { path: f.path, content: text }); }
+};
+
+/* ============================================================
+   OLLAMA — proxied through the Rust backend (no OLLAMA_ORIGINS).
+   ============================================================ */
+async function chatStream(messages, onToken){
+  const ch = new Channel();
+  ch.onmessage = (tok) => { if (tok) onToken(tok); };
+  await invoke("ollama_chat", { messages, model: CHAT_MODEL, onToken: ch });
+}
+
+/* ============================================================
+   INDEX — persistent vector store in the Rust backend (LanceDB).
+   `index_vault` syncs embeddings incrementally (only changed files);
+   `search_notes` / `related_notes` query them. The index survives
+   restarts, so reopening a vault is instant.
+   ============================================================ */
+async function indexVault(dir){
+  if (!dir) return;
+  const ch = new Channel();
+  ch.onmessage = (s) => { if (s) setState(s); };
+  try { await invoke("index_vault", { dir, onStatus: ch }); setOnline(true); }
+  catch(e){ showErrFromIndex(e); }
+}
+
+/* Live refresh — fired (debounced) when the Rust watcher sees external .md
+   changes. Reconciles the file list, reindexes, and reloads the open note only
+   if it changed on disk AND has no unsaved local edits (never clobbers typing). */
+let refreshTimer = null;
+function scheduleRefresh(){ clearTimeout(refreshTimer); refreshTimer = setTimeout(refreshVault, 1200); }
+async function refreshVault(){
+  if (!dirHandle) return;
+  let fresh;
+  try { fresh = await invoke("list_markdown", { dir: dirHandle }); } catch(_){ return; }
+  files = fresh;
+  if ($("#ov-open").classList.contains("open")) renderOpenRows($("#q-open").value);
+  if (current && !files.find(f => f.path === current.path)){
+    // the open note was deleted/renamed externally
+    clearTimeout(saveTimer); saveTimer = null; dirty = false; current = null;
+    if (files.length) await openFile(files[0]);
+    else { openEmpty(); $("#path").textContent = "no note open"; }
+  } else if (current && !dirty){
+    try {
+      const disk = await vault.read(current);
+      if (disk !== edGet()){ fileText.set(current.path, disk); edSet(disk); dirty = false; setState("updated on disk"); }
+    } catch(_){}
+  }
+  indexVault(dirHandle);
+}
+
+/* ============================================================
+   EDITOR — CodeMirror 6. Markdown highlighting, line wrapping,
+   paragraph-dimming focus mode, caret-pinned "/" menu. Vendored
+   offline as window.CM (see vendor/codemirror.js).
+   ============================================================ */
+const C = window.CM;
+let view = null;
+let loading = false;   // true while we set the doc programmatically (don't mark dirty)
+
+const cpHighlight = C.HighlightStyle.define([
+  { tag: C.tags.heading1, fontWeight: "600", fontSize: "1.5em", color: "var(--ink)" },
+  { tag: C.tags.heading2, fontWeight: "600", fontSize: "1.3em", color: "var(--ink)" },
+  { tag: C.tags.heading3, fontWeight: "600", fontSize: "1.12em", color: "var(--ink)" },
+  { tag: [C.tags.heading4, C.tags.heading5, C.tags.heading6], fontWeight: "600", color: "var(--ink)" },
+  { tag: C.tags.strong, fontWeight: "600", color: "var(--ink)" },
+  { tag: C.tags.emphasis, fontStyle: "italic" },
+  { tag: C.tags.strikethrough, textDecoration: "line-through", color: "var(--ink-faint)" },
+  { tag: C.tags.link, color: "var(--accent)" },
+  { tag: C.tags.url, color: "var(--ink-faint)" },
+  { tag: C.tags.monospace, fontFamily: "var(--ui)", color: "var(--ink-soft)" },
+  { tag: C.tags.quote, color: "var(--ink-soft)", fontStyle: "italic" },
+  { tag: [C.tags.processingInstruction, C.tags.meta], color: "var(--ink-faint)" },
+  { tag: C.tags.list, color: "var(--ink-soft)" },
+]);
+
+const cpTheme = C.EditorView.theme({
+  "&": { backgroundColor: "transparent", color: "var(--ink)" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": { fontFamily: "var(--read)", fontSize: "20px", lineHeight: "1.78", letterSpacing: ".1px" },
+  ".cm-content": { padding: "0", minHeight: "62vh", caretColor: "var(--accent)" },
+  ".cm-line": { padding: "0 0 .35em 0" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": { backgroundColor: "var(--accent-soft)" },
+  ".cm-placeholder": { color: "var(--ink-faint)", fontStyle: "normal" },
+});
+
+view = new C.EditorView({
+  parent: $("#editor"),
+  extensions: [
+    C.history(),
+    C.drawSelection(),
+    C.highlightActiveLine(),
+    C.EditorView.lineWrapping,
+    C.markdown({ base: C.markdownLanguage }),
+    C.syntaxHighlighting(cpHighlight),
+    C.keymap.of([...C.defaultKeymap, ...C.historyKeymap, C.indentWithTab]),
+    C.EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "note" }),
+    C.placeholder("Start writing…"),
+    cpTheme,
+    C.EditorView.updateListener.of(u => {
+      if (loading || !u.docChanged) return;
+      dirty = true;
+      scheduleSave();        // notebook-style autosave (debounced)
+      slashCheck(u.view);
+    }),
+  ],
+});
+
+/* editor helpers — keep the rest of the app agnostic to CodeMirror's API */
+function edGet(){ return view.state.doc.toString(); }
+function edSet(text){ loading = true; view.dispatch({ changes:{ from:0, to:view.state.doc.length, insert:text }, selection:{ anchor:0 } }); loading = false; }
+function edInsert(s){ const p = view.state.selection.main.head; view.dispatch({ changes:{ from:p, insert:s }, selection:{ anchor:p + s.length } }); }
+function edBefore(n){ const p = view.state.selection.main.head; return view.state.sliceDoc(Math.max(0, p - n), p); }
+
+/* ---- autosave ----
+   Write to disk on a short idle debounce (cheap); re-index — the expensive
+   embedding step — on a longer one. Ctrl+S, switching notes, and window blur
+   flush immediately. So a note is "saved until you throw it out": no Save
+   ritual, no unsaved-changes prompt. */
+let saveTimer = null, indexTimer = null;
+function scheduleSave(){
+  setState("editing…");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => flushSave(false), 900);
+}
+async function flushSave(reindexNow){
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!current || !dirty) return;
+  const text = edGet();
+  try {
+    await vault.write(current, text);
+    fileText.set(current.path, text); dirty = false; setState("saved");
+  } catch(e){ setState("save failed"); return; }
+  clearTimeout(indexTimer);
+  if (reindexNow) indexVault(dirHandle);
+  else indexTimer = setTimeout(() => indexVault(dirHandle), 2500);
+}
+
+function openEmpty(){ $("#empty").classList.remove("hidden"); $("#stage").classList.add("hidden"); }
+function openStage(){ $("#empty").classList.add("hidden"); $("#stage").classList.remove("hidden"); }
+async function openFile(f){
+  await flushSave(true);     // persist + index the note we're leaving
+  current = f;
+  const text = fileText.get(f.path) ?? await vault.read(f);
+  fileText.set(f.path, text);
+  edSet(text); dirty = false;
+  $("#path").textContent = f.rel; setState("markdown");
+  openStage(); view.requestMeasure(); view.focus();
+}
+async function save(){ await flushSave(true); }   // Ctrl+S = save + re-index now
+
+async function deleteNote(){
+  if (!current) return;
+  const victim = current;
+  if (!confirm(`Move "${victim.name}" to the Recycle Bin?`)) return;
+  try {
+    await invoke("delete_file", { path: victim.path });
+  } catch(e){ const b = showDrawer("Delete note"); drawerErr(b, e); return; }
+  clearTimeout(saveTimer); saveTimer = null; dirty = false;  // don't resurrect it
+  current = null;
+  files = files.filter(f => f.path !== victim.path);
+  fileText.delete(victim.path);
+  if (files.length){ await openFile(files[0]); }
+  else { openEmpty(); $("#path").textContent = "no note open"; }
+  indexVault(dirHandle);     // purge the deleted note's index rows
+}
+
+async function doOpenFolder(){
+  try {
+    const got = await vault.openFolder();
+    if (got === null) return;                 // cancelled
+    invoke("watch_vault", { dir: dirHandle }).catch(() => {});  // live-refresh on external changes
+    if (!files.length){ newNotePrompt(); return; }  // empty vault -> create the first note
+    await openFile(files[0]);
+    indexVault(dirHandle);                     // sync the persistent index in the background
+  } catch(e){ console.error(e); }
+}
+$("#open1").addEventListener("click", doOpenFolder);
+
+/* ============================================================
+   OVERLAYS  (quick-open + ai palette)
+   ============================================================ */
+function openOverlay(id){ closeOverlays(); const o = $(id); o.classList.add("open"); const i = o.querySelector("input"); if (i){ i.value=""; i.focus(); } if (id === "#ov-open") renderOpenRows(""); if (id === "#ov-ask") setActive($("#ask-rows"), 0); if (id === "#ov-new") $("#new-foot").textContent = "enter to create · esc to cancel"; }
+
+/* ============================================================
+   NEW NOTE — create a file in the vault and open it.
+   ============================================================ */
+function newNotePrompt(){ if (!dirHandle){ doOpenFolder(); return; } openOverlay("#ov-new"); }
+async function newNote(name){
+  try {
+    const entry = await invoke("create_file", { name });
+    files.push(entry);
+    files.sort((a, b) => a.rel.toLowerCase().localeCompare(b.rel.toLowerCase()));
+    closeOverlays();
+    await openFile(entry);
+    indexVault(dirHandle);
+  } catch(e){
+    $("#new-foot").textContent = (e && e.message) ? e.message : String(e);
+  }
+}
+function closeOverlays(){ document.querySelectorAll(".overlay").forEach(o => o.classList.remove("open")); }
+function rowsOf(box){ return [...box.querySelectorAll(".row")]; }
+function activeIdx(box){ return rowsOf(box).findIndex(r => r.classList.contains("active")); }
+function setActive(box, i){ const rows = rowsOf(box); if (!rows.length) return; i = (i + rows.length) % rows.length; rows.forEach(r => r.classList.remove("active")); rows[i].classList.add("active"); rows[i].scrollIntoView({ block:"nearest" }); }
+
+/* quick open */
+function renderOpenRows(filter){
+  const box = $("#open-rows"); const q = filter.toLowerCase();
+  const matches = files.filter(f => f.rel.toLowerCase().includes(q)).slice(0, 50);
+  box.innerHTML = "";
+  matches.forEach((f, idx) => {
+    const div = document.createElement("div");
+    div.className = "row" + (idx === 0 ? " active" : "");
+    div.innerHTML = `<span class="lbl"></span><span class="hint"></span>`;
+    div.querySelector(".lbl").textContent = f.name;
+    div.querySelector(".hint").textContent = f.rel;
+    div.addEventListener("click", () => { closeOverlays(); openFile(f); });
+    div.dataset.path = f.path;
+    box.appendChild(div);
+  });
+}
+$("#q-open").addEventListener("input", e => renderOpenRows(e.target.value));
+
+/* ai palette rows */
+$("#ask-rows").addEventListener("click", e => { const r = e.target.closest(".row"); if (r) runAction(r.dataset.act); });
+
+function runAction(act){
+  const q = $("#q-ask").value.trim();
+  closeOverlays();
+  if (act === "ask")            ask(q);
+  else if (act === "related")   findRelated();
+  else if (act === "summarize") summarize();
+  else if (act === "continue")  continueWriting();
+  else if (act === "rewrite")   rewriteSelection();
+  else if (act === "delete")    deleteNote();
+}
+
+/* ============================================================
+   DRAWER + AI ACTIONS
+   ============================================================ */
+function showDrawer(title){ $("#dtitle").textContent = title; $("#dbody").innerHTML = ""; $("#drawer").classList.add("open"); return $("#dbody"); }
+$("#dclose").addEventListener("click", () => $("#drawer").classList.remove("open"));
+function drawerErr(body, e){
+  setOnline(false);
+  const msg = (e && e.message) ? e.message : String(e);
+  body.innerHTML = `<div class="err"></div>`;
+  body.querySelector(".err").textContent =
+    `The local model isn't ready.\n\nThe bundled engine may still be loading — give it a moment and try again.\n\n(${msg})`;
+}
+function showErrFromIndex(e){ setOnline(false); setState("model not reachable"); }
+
+async function ask(query){
+  if (!query) return;
+  const body = showDrawer("Ask · " + query);
+  const note = document.createElement("div"); note.className = "answer thinking"; note.textContent = "searching your notes…"; body.appendChild(note);
+  try {
+    const hits = await invoke("search_notes", { dir: dirHandle, query, k: 5 });
+    const context = hits.map(h => `[${h.name}]\n${h.text}`).join("\n\n---\n\n");
+    note.remove();
+    const ans = document.createElement("div"); ans.className = "answer"; body.appendChild(ans);
+    await chatStream([
+      { role:"system", content:"You are a thinking partner with access to the user's personal notes (a commonplace book). Answer using the provided notes when they are relevant; if they don't contain the answer, say so plainly rather than inventing. Cite note filenames in square brackets like [name.md]. Be concise and direct." },
+      { role:"user", content:`Notes:\n\n${context}\n\nQuestion: ${query}` }
+    ], t => { ans.textContent += t; body.scrollTop = body.scrollHeight; });
+  } catch(e){ drawerErr(body, e); }
+}
+
+async function findRelated(){
+  if (!current){ return; }
+  const body = showDrawer("Related to · " + current.name);
+  const note = document.createElement("div"); note.className = "answer thinking"; note.textContent = "comparing by meaning…"; body.appendChild(note);
+  try {
+    const hits = await invoke("related_notes", { dir: dirHandle, current: current.path, text: edGet().slice(0, 2000), k: 6 });
+    note.remove();
+    if (!hits.length){ body.innerHTML = `<div class="answer thinking">No other notes to compare yet.</div>`; return; }
+    hits.forEach((h) => {
+      const f = files.find(x => x.path === h.path);
+      const el = document.createElement("div"); el.className = "rel";
+      el.innerHTML = `<div class="n"></div><div class="s"></div>`;
+      el.querySelector(".n").textContent = h.name;
+      el.querySelector(".s").textContent = h.text.slice(0,160);
+      el.addEventListener("click", () => { $("#drawer").classList.remove("open"); if (f) openFile(f); });
+      body.appendChild(el);
+    });
+  } catch(e){ drawerErr(body, e); }
+}
+
+async function summarize(){
+  if (!current) return;
+  const body = showDrawer("Summary · " + current.name);
+  const ans = document.createElement("div"); ans.className = "answer"; body.appendChild(ans);
+  try {
+    await chatStream([
+      { role:"system", content:"Summarize the note concisely in 3–5 sentences, preserving its key ideas. Plain prose, no preamble." },
+      { role:"user", content: edGet().slice(0, 16000) }
+    ], t => { ans.textContent += t; body.scrollTop = body.scrollHeight; });
+  } catch(e){ drawerErr(body, e); }
+}
+
+async function continueWriting(){
+  if (!current) return;
+  view.focus();
+  const before = edBefore(2000);
+  try {
+    await chatStream([
+      { role:"system", content:"Continue the user's writing naturally, matching their voice and style. Output only the continuation text, no commentary." },
+      { role:"user", content: before }
+    ], t => edInsert(t));
+    dirty = true; setState("edited");
+  } catch(e){ const b = showDrawer("Continue writing"); drawerErr(b, e); }
+}
+
+async function rewriteSelection(){
+  if (!current) return;
+  const sel = view.state.selection.main;
+  if (sel.empty){ const b = showDrawer("Rewrite selection"); b.innerHTML = `<div class="answer thinking">Select some text first, then run Rewrite selection.</div>`; return; }
+  const selected = view.state.sliceDoc(sel.from, sel.to);
+  view.focus();
+  // clear the selection, then stream the replacement in at that spot
+  view.dispatch({ changes:{ from: sel.from, to: sel.to, insert: "" }, selection:{ anchor: sel.from } });
+  try {
+    await chatStream([
+      { role:"system", content:"Rewrite the user's selected passage to be clearer and stronger while preserving its meaning and their voice. Output only the rewritten text, no commentary or quotes." },
+      { role:"user", content: selected }
+    ], t => edInsert(t));
+    dirty = true; setState("edited");
+  } catch(e){ const b = showDrawer("Rewrite selection"); drawerErr(b, e); }
+}
+
+/* ============================================================
+   INLINE "/"  — a "/" alone on a line opens the AI palette at the
+   caret's line (CodeMirror-aware).
+   ============================================================ */
+function slashCheck(v){
+  const pos = v.state.selection.main.head;
+  const line = v.state.doc.lineAt(pos);
+  if (line.text === "/" && pos === line.to){
+    v.dispatch({ changes:{ from: line.from, to: line.to, insert: "" } });
+    openOverlay("#ov-ask");
+    setActive($("#ask-rows"), 3); // highlight "Continue writing"
+  }
+}
+
+/* ============================================================
+   KEYS + TOGGLES
+   ============================================================ */
+document.addEventListener("keydown", e => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === "o"){ e.preventDefault(); doOpenFolder(); return; }
+  if (mod && e.key.toLowerCase() === "n"){ e.preventDefault(); newNotePrompt(); return; }
+  if (mod && e.key.toLowerCase() === "s"){ e.preventDefault(); save(); return; }
+  if (mod && e.key.toLowerCase() === "p"){ e.preventDefault(); if (files.length) openOverlay("#ov-open"); return; }
+  if (mod && e.key.toLowerCase() === "k"){ e.preventDefault(); openOverlay("#ov-ask"); return; }
+  if (mod && e.key === "."){ e.preventDefault(); document.body.classList.toggle("focus"); return; }
+  if (e.key === "Escape"){ if ($("#ov-setup").classList.contains("open")) return; closeOverlays(); $("#drawer").classList.remove("open"); document.body.classList.remove("focus"); return; }
+
+  const openOv = document.querySelector(".overlay.open");
+  if (!openOv) return;
+  // new-note overlay: a plain text field, no rows to navigate
+  if (openOv.id === "ov-new"){
+    if (e.key === "Enter"){ e.preventDefault(); const n = $("#q-new").value.trim(); if (n) newNote(n); }
+    return;
+  }
+  const box = openOv.querySelector(".rows");
+  if (e.key === "ArrowDown"){ e.preventDefault(); setActive(box, activeIdx(box) + 1); }
+  else if (e.key === "ArrowUp"){ e.preventDefault(); setActive(box, activeIdx(box) - 1); }
+  else if (e.key === "Enter"){
+    e.preventDefault();
+    const active = box.querySelector(".row.active");
+    if (openOv.id === "ov-open"){ if (active){ const f = files.find(x => x.path === active.dataset.path); closeOverlays(); if (f) openFile(f); } }
+    else { runAction(active ? active.dataset.act : "ask"); }
+  }
+});
+$("#t-theme").addEventListener("click", () => {
+  document.body.dataset.theme = document.body.dataset.theme === "dark" ? "light" : "dark";
+});
+$("#t-focus").addEventListener("click", () => document.body.classList.toggle("focus"));
+
+// safety net: flush a pending autosave when the window loses focus
+window.addEventListener("blur", () => { flushSave(true); });
+
+// live-refresh when the Rust watcher reports external .md changes
+if (T.event && T.event.listen) { T.event.listen("vault-changed", () => scheduleRefresh()); }
+
+/* first-run model download UI */
+function showSetup(){ closeOverlays(); $("#ov-setup").classList.add("open"); }
+function hideSetup(){ $("#ov-setup").classList.remove("open"); }
+function updateSetup(m){
+  const pct = m.total ? Math.floor(m.downloaded / m.total * 100) : 0;
+  const mb = b => (b / 1048576).toFixed(0);
+  $("#setup-file").textContent = "Downloading " + m.file;
+  $("#setup-bar").style.width = pct + "%";
+  $("#setup-pct").textContent = m.total ? `${mb(m.downloaded)} / ${mb(m.total)} MB · ${pct}%` : `${mb(m.downloaded)} MB`;
+}
+
+/* boot:
+   1. if the local models aren't present (fresh install), download them once
+      with a progress UI;
+   2. start the bundled engine;
+   3. show "starting" until both llama-server instances have loaded. */
+(async () => {
+  let name = "model";
+  try { name = await invoke("active_model"); } catch(_){}
+
+  let present = true;
+  try { present = await invoke("models_present"); } catch(_){}
+  if (!present) {
+    showSetup(); setModel("downloading model"); setOnline(false);
+    const ch = new Channel();
+    ch.onmessage = (m) => updateSetup(m);
+    try {
+      await invoke("download_models", { onProgress: ch });
+      $("#setup-foot").textContent = "starting the model…";
+    } catch(e){
+      $("#setup-foot").textContent = "Download failed: " + ((e && e.message) ? e.message : e) + " — check your connection and reopen the app.";
+      return;
+    }
+    hideSetup();
+  }
+
+  try { await invoke("start_engine"); } catch(_){}
+
+  setModel("starting · " + name); setOnline(false);
+  for (let i = 0; i < 400; i++) {
+    let ready = false;
+    try { ready = await invoke("engine_ready"); } catch(_){}
+    if (ready) { setModel("offline · " + name); setOnline(true); return; }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  setModel("offline · " + name); // stop showing "starting"; requests still gate on health
+})();
+openEmpty();
+</script>
+</body>
+</html>

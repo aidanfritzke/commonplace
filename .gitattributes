@@ -1,0 +1,14 @@
+# Normalize line endings
+* text=auto
+
+# Keep Windows scripts CRLF
+*.ps1 text eol=crlf
+
+# Vendored, generated bundle (don't count toward language stats / diffs)
+app/src/vendor/codemirror.js linguist-vendored
+
+# Treat model/binary types as binary if ever present
+*.gguf binary
+*.dll binary
+*.exe binary
+*.ico binary

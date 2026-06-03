@@ -1,0 +1,33 @@
+# ---- build artifacts ----
+# Rust target dir (tens of GB of compiled deps + the installer output)
+app/src-tauri/target/
+**/target/
+
+# Node
+app/node_modules/
+**/node_modules/
+
+# ---- large binaries fetched/generated, not source ----
+# GGUF model weights (~2 GB). Downloaded at first launch into app-data;
+# for local builds, place them in this folder (see README).
+app/src-tauri/resources/models/
+# Bundled llama.cpp engine (~46 MB of third-party binaries).
+# Repopulate with: app/scripts/fetch-engine.ps1
+app/src-tauri/resources/engine/
+
+# ---- local scratch / working dirs (not part of the project) ----
+/_setup/
+/_staging/
+
+# ---- editor / Claude / OS ----
+/.claude/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# ---- logs ----
+*.log
+
+# ---- accidental test scratch in the demo vault ----
+sample-vault/test/
