@@ -18,10 +18,18 @@ Tracked, not yet done. Deferred deliberately.
   failed download restarts the file), checksum verification, and a retry button.
 
 ## Editor / polish (later)
-- [ ] Vendor the **fonts** locally (Newsreader / JetBrains Mono) — currently loaded
-  from Google Fonts CDN, which breaks true offline use.
+- [x] **Fonts offline.** DONE — dropped the Google Fonts CDN; the app now uses
+  system fonts (Courier New writing surface, system mono chrome). Fully offline.
 - [ ] Persist **UI state** (theme, last vault/file) via app config.
 - [ ] Batch embeddings via a single multi-input request for faster first-index on
   large vaults.
 - [ ] In-app **chat-model switcher** (list installed models, pick, persist) — only
-  relevant if we re-expose model choice; currently the bundled Qwen is fixed.
+  relevant if we re-expose model choice; currently Phi-3.5-mini is fixed.
+
+## Release polish (nice-to-have)
+- [ ] Add a **screenshot/GIF** to the README (placeholder Releases link too).
+- [ ] Replace the default Tauri **app icon** with a custom one (cosmetic).
+- [ ] Resumable + checksummed model download; retry button on the setup overlay.
+- [ ] The bundle identifier `com.commonplace.app` triggers a harmless macOS
+  `.app` warning at build; rename before any macOS build (would change the
+  app-data path, so not now).
