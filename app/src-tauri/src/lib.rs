@@ -167,8 +167,17 @@ fn create_note(root: &std::path::Path, name: &str) -> Result<FileEntry, String> 
     let title = fname.strip_suffix(".md").unwrap_or(&fname);
     std::fs::write(&path, format!("# {title}\n\n")).map_err(|e| e.to_string())?;
 
+    // `root` is canonicalized, which on Windows carries a `\\?\` verbatim prefix.
+    // Strip it so this path matches the plain paths `list_markdown` returns —
+    // otherwise the frontend treats the new note as a different/!found file.
+    let path_str = path.to_string_lossy().into_owned();
+    let path_str = path_str
+        .strip_prefix(r"\\?\")
+        .map(|s| s.to_string())
+        .unwrap_or(path_str);
+
     Ok(FileEntry {
-        path: path.to_string_lossy().into_owned(),
+        path: path_str,
         name: fname.clone(),
         rel: fname,
     })
@@ -391,6 +400,8 @@ mod tests {
         let e = create_note(&root, "ideas").unwrap();
         assert_eq!(e.name, "ideas.md");
         assert!(root.join("ideas.md").exists());
+        // returned path must NOT carry the Windows \\?\ verbatim prefix
+        assert!(!e.path.starts_with(r"\\?\"), "path leaked UNC prefix: {}", e.path);
 
         // existing .md kept; duplicate rejected
         assert_eq!(create_note(&root, "ideas.md").unwrap_err(), "a note with that name already exists");

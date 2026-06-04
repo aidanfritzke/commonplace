@@ -4,15 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Commonplace</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#FBFAF6; --surface:#FFFFFF; --ink:#1F1B16; --ink-soft:#6B6457; --ink-faint:#A7A092;
     --line:#E7E1D6; --line-strong:#D8D0C2; --accent:#8C3A2B; --accent-soft:#F3E8E3; --ok:#5C8A56;
-    --read:"Newsreader",Georgia,"Times New Roman",serif;
-    --ui:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+    --read:"Courier New","Courier",ui-monospace,monospace;
+    --ui:ui-monospace,Consolas,"Courier New",monospace;
   }
   [data-theme="dark"]{
     --bg:#1A1714; --surface:#221E1A; --ink:#ECE6DA; --ink-soft:#A89F8E; --ink-faint:#6E6557;
@@ -281,7 +278,12 @@ async function refreshVault(){
   } else if (current && !dirty){
     try {
       const disk = await vault.read(current);
-      if (disk !== edGet()){ fileText.set(current.path, disk); edSet(disk); dirty = false; setState("updated on disk"); }
+      if (disk !== edGet()){
+        const at = view.state.selection.main.head;
+        fileText.set(current.path, disk); edSet(disk);
+        view.dispatch({ selection: { anchor: Math.min(at, view.state.doc.length) } }); // keep caret put
+        dirty = false; setState("updated on disk");
+      }
     } catch(_){}
   }
   indexVault(dirHandle);
@@ -348,7 +350,15 @@ view = new C.EditorView({
 
 /* editor helpers — keep the rest of the app agnostic to CodeMirror's API */
 function edGet(){ return view.state.doc.toString(); }
-function edSet(text){ loading = true; view.dispatch({ changes:{ from:0, to:view.state.doc.length, insert:text }, selection:{ anchor:0 } }); loading = false; }
+function edSet(text, caretEnd){
+  // caretEnd: place the caret at the end of the first line (after a "# Title"),
+  // set atomically with the content so nothing can reset it afterwards.
+  let anchor = 0;
+  if (caretEnd){ const nl = text.indexOf("\n"); anchor = (nl === -1) ? text.length : nl; }
+  loading = true;
+  view.dispatch({ changes:{ from:0, to:view.state.doc.length, insert:text }, selection:{ anchor } });
+  loading = false;
+}
 function edInsert(s){ const p = view.state.selection.main.head; view.dispatch({ changes:{ from:p, insert:s }, selection:{ anchor:p + s.length } }); }
 function edBefore(n){ const p = view.state.selection.main.head; return view.state.sliceDoc(Math.max(0, p - n), p); }
 
@@ -358,6 +368,7 @@ function edBefore(n){ const p = view.state.selection.main.head; return view.stat
    flush immediately. So a note is "saved until you throw it out": no Save
    ritual, no unsaved-changes prompt. */
 let saveTimer = null, indexTimer = null;
+let bufferFile = null;   // which file's content the editor buffer currently holds
 function scheduleSave(){
   setState("editing…");
   clearTimeout(saveTimer);
@@ -365,7 +376,9 @@ function scheduleSave(){
 }
 async function flushSave(reindexNow){
   clearTimeout(saveTimer); saveTimer = null;
-  if (!current || !dirty) return;
+  // never write unless the buffer actually belongs to the current file — guards
+  // against a flush firing mid-switch and corrupting a file with the wrong text
+  if (!current || !dirty || current.path !== bufferFile) return;
   const text = edGet();
   try {
     await vault.write(current, text);
@@ -378,12 +391,16 @@ async function flushSave(reindexNow){
 
 function openEmpty(){ $("#empty").classList.remove("hidden"); $("#stage").classList.add("hidden"); }
 function openStage(){ $("#empty").classList.add("hidden"); $("#stage").classList.remove("hidden"); }
-async function openFile(f){
-  await flushSave(true);     // persist + index the note we're leaving
-  current = f;
+async function openFile(f, caretEnd){
+  await flushSave(true);     // persist the note we're leaving (current still = old here)
+  // Load the content BEFORE switching `current`, so during this await the editor
+  // buffer and `current` stay in sync (old file). Otherwise a flush firing during
+  // the read could write the old/empty buffer to the new file and corrupt it.
   const text = fileText.get(f.path) ?? await vault.read(f);
+  current = f;
+  bufferFile = f.path;
   fileText.set(f.path, text);
-  edSet(text); dirty = false;
+  edSet(text, caretEnd); dirty = false;
   $("#path").textContent = f.rel; setState("markdown");
   openStage(); view.requestMeasure(); view.focus();
 }
@@ -432,7 +449,7 @@ async function newNote(name){
     files.push(entry);
     files.sort((a, b) => a.rel.toLowerCase().localeCompare(b.rel.toLowerCase()));
     closeOverlays();
-    await openFile(entry);
+    await openFile(entry, true);   // caret at the end of the "# Title" line
     indexVault(dirHandle);
   } catch(e){
     $("#new-foot").textContent = (e && e.message) ? e.message : String(e);
