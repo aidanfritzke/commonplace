@@ -93,6 +93,23 @@ the model cite the right notes — to confirm it all worked end to end.
 The result is in this repository: a small, private, offline notebook that thinks
 with you, and that anyone can install, read, fork, and ship.
 
+## Shipped
+
+In the same session, it was published. A pre-release legal pass audited every
+dependency (~790 Rust crates plus the JS bundle and the two models) and confirmed
+the whole stack is permissively licensed with no copyleft — clear to release under
+MIT. License files and full third-party attribution were added, the README was
+expanded into a proper project page, and then it went live:
+
+- **Repository:** https://github.com/aidanfritzke/commonplace (public, MIT)
+- **Release:** [`v0.1.0`](https://github.com/aidanfritzke/commonplace/releases/tag/v0.1.0)
+  with the ~42 MB Windows installer attached as a downloadable asset.
+
+The repo was created, the history pushed, and the installer uploaded as a GitHub
+release — all driven from the same session, using the GitHub CLI. Start to finish —
+empty machine to a public, installable, open-source application — in a single
+afternoon.
+
 ---
 
 *Built with Claude. The decisions were human; the keystrokes were not.*
