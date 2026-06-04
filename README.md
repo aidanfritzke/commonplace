@@ -71,7 +71,7 @@ LanceDB for the index.
 ## Install
 
 1. Download `Commonplace_x64-setup.exe` from the
-   [Releases](#) page (~42 MB) and run it.
+   [Releases](https://github.com/aidanfritzke/commonplace/releases) page (~42 MB) and run it.
 2. On first launch it downloads the AI model (~2.3 GB, one time, with a progress
    bar) into `%APPDATA%\com.commonplace.app\models`. Keep the window open until it
    finishes.
