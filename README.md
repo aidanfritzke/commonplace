@@ -6,6 +6,12 @@ intelligence is summoned with **Ctrl+K** and stays out of the way otherwise.
 Your notes and the model both run entirely on your machine. Nothing is ever sent
 anywhere.
 
+> [!TIP]
+> **Try it.** Install it, open the included [`sample-vault/`](sample-vault) folder,
+> and press **Ctrl+K**. Ask something cross-topic like *"what's a good prompt for
+> extracting action items, and which meeting has open ones?"* — it answers from your
+> notes and **cites the files it used, across folders.**
+
 > A *commonplace book* is a centuries-old practice: a personal collection of what's
 > worth keeping — quotations, arguments, ideas, questions you don't yet have the
 > answer to. Commonplace is that, with a local model that can answer from your own
