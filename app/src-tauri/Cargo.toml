@@ -1,9 +1,13 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "1.0.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+# Two binaries live in this crate: the GUI app (src/main.rs) and the MCP server
+# (src/bin/mcp.rs). Pin the app as the default so `tauri build` bundles app.exe
+# (the GUI) as the installed executable, with mcp.exe shipped only as a resource.
+default-run = "app"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

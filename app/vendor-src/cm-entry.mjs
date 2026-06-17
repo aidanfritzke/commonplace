@@ -8,8 +8,10 @@ import {
   highlightActiveLine,
   drawSelection,
   placeholder,
+  Decoration,
+  ViewPlugin,
 } from "@codemirror/view";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, RangeSetBuilder } from "@codemirror/state";
 import {
   defaultKeymap,
   history,
@@ -19,15 +21,19 @@ import {
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { autocompletion } from "@codemirror/autocomplete";
 
 window.CM = {
   EditorView,
   EditorState,
   Compartment,
+  RangeSetBuilder,
   keymap,
   highlightActiveLine,
   drawSelection,
   placeholder,
+  Decoration,
+  ViewPlugin,
   defaultKeymap,
   history,
   historyKeymap,
@@ -37,4 +43,5 @@ window.CM = {
   syntaxHighlighting,
   HighlightStyle,
   tags: t,
+  autocompletion,
 };

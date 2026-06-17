@@ -28,6 +28,17 @@ anywhere.
 - **Ask your notes** (Ctrl+K) — retrieval-augmented answers grounded in your vault,
   citing the filenames they came from. Also: find related notes by meaning,
   summarize the current note, continue writing at the cursor, rewrite a selection.
+- **Link your thinking** — `[[wikilinks]]` with autocomplete and Ctrl-click to
+  follow (or create a missing note); a backlinks strip showing what links here; and
+  **Suggest links** (Ctrl+K), which proposes connections by meaning and inserts them
+  with one click.
+- **See the shape of your vault** — a **knowledge map** (Ctrl+G) of your notes:
+  explicit `[[link]]` edges plus meaning-based (semantic) edges you can toggle. Plus
+  a summoned **file tree** (Ctrl+\) and a folder-aware quick switcher.
+- **Quick-capture** (Ctrl+Shift+N) — drop a timestamped fleeting note into `inbox/`
+  from anywhere, no friction.
+- **Use it from your AI agent** — an optional, read-only local [MCP](https://modelcontextprotocol.io)
+  server lets Claude Desktop / Claude Code search and read your vault (see below).
 - **Notebook-style autosave** — you write, it's saved. No save ritual, no
   "unsaved changes" prompts.
 - **Delete to the Recycle Bin** — removing a note is recoverable, not permanent.
@@ -95,8 +106,12 @@ the index.
 |-----|--------|
 | Ctrl+O | Open a folder of notes |
 | Ctrl+N | New note |
-| Ctrl+P | Jump to a note (quick switcher) |
-| Ctrl+K | Command palette — ask · related · summarize · continue · rewrite · delete |
+| Ctrl+Shift+N | Quick-capture a fleeting note into `inbox/` |
+| Ctrl+P | Jump to a note (folder-aware quick switcher) |
+| Ctrl+K | Command palette — ask · suggest links · related · summarize · continue · rewrite · delete |
+| Ctrl+G | Knowledge map |
+| Ctrl+\ | File tree |
+| `[[` | Link to another note (autocomplete; Ctrl-click a link to follow) |
 | Ctrl+S | Save & re-index now (notes autosave anyway) |
 | Ctrl+. | Focus mode |
 | `/` on an empty line | Inline command palette |
@@ -113,6 +128,51 @@ the index.
   external code and blocks any network egress from the UI.
 - **The model cannot act** — it only emits text (see "How it works").
 - Provided "as is," without warranty (see `LICENSE`).
+
+## Use your vault from an AI agent (MCP)
+
+Commonplace ships a small, **read-only** [Model Context Protocol](https://modelcontextprotocol.io)
+server so a local AI agent — Claude Desktop or Claude Code — can read and search
+your notes as a tool. It is optional, local-only, and cannot write or delete:
+the tools are `list_notes`, `read_note`, `search`, and `related_notes`.
+
+It opens the same on-disk index read-only and uses the running app's local
+embedder, so two things matter:
+
+- **Commonplace must be running** for the semantic tools (`search`,
+  `related_notes`) — the app serves the embedding model on `127.0.0.1:11501`.
+  `list_notes` and `read_note` are plain file reads and work either way.
+- Point it at the **same vault folder** you open in the app (the index is keyed by
+  that path).
+
+The server binary, `mcp.exe`, **ships with Commonplace** — it's installed in the
+app's program folder under `resources\mcp.exe`. A default per-user install puts it
+at `%LOCALAPPDATA%\Commonplace\resources\mcp.exe`; an all-users install at
+`C:\Program Files\Commonplace\resources\mcp.exe`. Point your MCP client's `command`
+at that path (use the full absolute path — config files don't expand
+`%LOCALAPPDATA%`). Building from source, it's `app/src-tauri/target/release/mcp.exe`.
+
+**Claude Code** (one command):
+
+```powershell
+claude mcp add commonplace -- "$env:LOCALAPPDATA\Commonplace\resources\mcp.exe" --vault "C:\path\to\your\vault"
+```
+
+**Claude Desktop** — add to `%APPDATA%\Claude\claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "commonplace": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Commonplace\\resources\\mcp.exe",
+      "args": ["--vault", "C:\\path\\to\\your\\vault"]
+    }
+  }
+}
+```
+
+Then ask your agent things like *"search my commonplace notes for prompt
+patterns"* or *"what notes relate to `ai/project-ideas.md`?"*.
 
 ## Build from source
 
@@ -140,10 +200,13 @@ Notes:
 app/                       the Tauri application
   src/index.html           the entire frontend (buildless, single file)
   src/vendor/codemirror.js vendored CodeMirror 6 bundle
+  src/vendor/force-graph.js vendored force-graph bundle (knowledge map)
+  vendor-src/build.mjs     the one offline build step (npm run vendor)
   src-tauri/src/
     lib.rs                 vault file I/O + chat streaming + commands
-    index.rs               embeddings + LanceDB search
+    index.rs               embeddings + LanceDB search + links/semantic edges
     engine.rs              engine lifecycle + first-run model download
+    bin/mcp.rs             read-only MCP server (separate binary)
 sample-vault/              a few demo notes to try it on
 HANDOFF.md                 the original design brief
 OPEN_ITEMS.md              tracked follow-ups

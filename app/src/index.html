@@ -44,6 +44,16 @@
   /* focus mode: dim every paragraph except the one with the caret */
   body.focus .cm-line{opacity:.25;transition:opacity .25s ease}
   body.focus .cm-activeLine{opacity:1}
+  /* [[wikilinks]] — Ctrl-click to follow; unresolved render faint + dashed */
+  .cm-wikilink{color:var(--accent);cursor:pointer;text-decoration:underline;
+    text-decoration-color:var(--line-strong);text-underline-offset:2px}
+  .cm-wikilink-unresolved{color:var(--ink-faint);text-decoration-style:dashed}
+  /* backlinks strip — ambient, under the note; click to list linked references */
+  .backlinks{margin-top:46px;padding-top:14px;border-top:1px solid var(--line);
+    font-family:var(--ui);font-size:12px;color:var(--ink-faint);cursor:pointer;
+    transition:color .15s ease,opacity .25s ease}
+  .backlinks:hover{color:var(--ink-soft)}
+  body.focus .backlinks{opacity:0;pointer-events:none}
 
   .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:0 24px}
   .empty h1{font-family:var(--read);font-weight:400;font-size:34px;margin:0;color:var(--ink)}
@@ -93,7 +103,46 @@
   .rel .n{font-family:var(--ui);font-size:13px;color:var(--ink)}
   .rel .s{font-family:var(--read);font-size:14px;color:var(--ink-faint);margin-top:4px;line-height:1.5;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .rel .why{font-family:var(--ui);font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.5}
+  .rel.inserted{border-color:var(--ok)}
+  .rel.inserted .n::after{content:" ✓ linked";color:var(--ok);font-size:11px}
   .err{color:var(--accent);font-family:var(--ui);font-size:13px;line-height:1.6;white-space:pre-wrap}
+
+  /* knowledge map — full-screen summoned view (Ctrl+G) */
+  .graph{position:fixed;inset:0;z-index:50;background:var(--bg);display:none}
+  .graph.open{display:block}
+  .graph-canvas{position:absolute;inset:0}
+  .graph-bar{position:absolute;top:0;left:0;right:0;height:46px;z-index:2;display:flex;
+    align-items:center;gap:20px;padding:0 18px;font-size:12px;color:var(--ink-faint);
+    letter-spacing:.2px;background:linear-gradient(var(--bg),rgba(0,0,0,0))}
+  .graph-title{color:var(--ink-soft)}
+  .graph-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+  .graph-close{margin-left:auto;cursor:pointer}
+  .graph-close:hover{color:var(--ink)}
+
+  /* quick-open folder group header (non-selectable) */
+  .group{padding:9px 14px 3px;margin:5px 6px 0;font-size:11px;color:var(--ink-faint);
+    text-transform:uppercase;letter-spacing:.5px}
+
+  /* file tree — summoned left panel (Ctrl+\) */
+  .tree{position:fixed;top:0;left:0;bottom:0;width:300px;max-width:80vw;z-index:45;
+    background:var(--surface);border-right:1px solid var(--line-strong);
+    box-shadow:22px 0 64px rgba(0,0,0,.12);transform:translateX(-101%);
+    transition:transform .2s ease;display:flex;flex-direction:column}
+  .tree.open{transform:none}
+  .tree .thead{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;
+    border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-soft);
+    letter-spacing:.4px;text-transform:uppercase}
+  .tree .thead .x{cursor:pointer;color:var(--ink-faint)}
+  .tree .thead .x:hover{color:var(--ink)}
+  .tbody{flex:1;overflow-y:auto;padding:8px 0;user-select:none}
+  .tdir{cursor:pointer;color:var(--ink-soft);font-size:13px;padding:4px 8px}
+  .tdir:hover{color:var(--ink)}
+  .tfile{cursor:pointer;color:var(--ink);font-size:13px;padding:4px 8px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tfile:hover{color:var(--accent)}
+  .tkids{display:none}
+  .tkids.show{display:block}
 </style>
 </head>
 <body data-theme="light">
@@ -115,6 +164,7 @@
   <div class="stage hidden" id="stage">
     <div class="column">
       <div id="editor"></div>
+      <div id="backlinks" class="backlinks hidden" title="Notes that link here"></div>
     </div>
   </div>
 
@@ -124,7 +174,9 @@
       <span id="state" title="Notes autosave as you type">markdown</span>
       <span title="New note">Ctrl+N  new</span>
       <span title="Find / jump to a note">Ctrl+P  files</span>
-      <span title="Ask · summarize · rewrite · delete">Ctrl+K  ask</span>
+      <span title="Ask · suggest links · summarize · rewrite · delete">Ctrl+K  ask</span>
+      <span title="Knowledge map">Ctrl+G  map</span>
+      <span title="File tree">Ctrl+\  tree</span>
       <span title="Save &amp; re-index now (notes autosave anyway)">Ctrl+S  save</span>
     </span>
   </div>
@@ -145,6 +197,7 @@
       <div class="rows" id="ask-rows">
         <div class="row active" data-act="ask"><span class="lbl">Ask about your notes</span><span class="hint">answer from your vault</span></div>
         <div class="row" data-act="related"><span class="lbl">Find related notes</span><span class="hint">by meaning</span></div>
+        <div class="row" data-act="suggest"><span class="lbl">Suggest links</span><span class="hint">connect this note</span></div>
         <div class="row" data-act="summarize"><span class="lbl">Summarize this note</span><span class="hint">current page</span></div>
         <div class="row" data-act="continue"><span class="lbl">Continue writing</span><span class="hint">at the cursor</span></div>
         <div class="row" data-act="rewrite"><span class="lbl">Rewrite selection</span><span class="hint">replace highlighted</span></div>
@@ -186,8 +239,26 @@
     <div class="dbody" id="dbody"></div>
   </div>
 
+  <!-- knowledge map (summoned: Ctrl+G) -->
+  <div class="graph" id="graph">
+    <div class="graph-bar">
+      <span class="graph-title">Knowledge map</span>
+      <label class="graph-toggle"><input type="checkbox" id="graph-semantic" checked /> semantic links</label>
+      <span class="graph-close" id="graph-x">esc to close ✕</span>
+    </div>
+    <div class="graph-canvas" id="graph-canvas"></div>
+  </div>
+
+  <!-- file tree (summoned: Ctrl+\) -->
+  <div class="tree" id="tree">
+    <div class="thead"><span>Files</span><span class="x" id="tree-x">✕</span></div>
+    <div class="tbody" id="tree-body"></div>
+  </div>
+
 <!-- vendored CodeMirror 6 (bundled offline; exposes window.CM) -->
 <script src="vendor/codemirror.js"></script>
+<!-- vendored force-graph (bundled offline; exposes window.ForceGraph) -->
+<script src="vendor/force-graph.js"></script>
 <script>
 /* ============================================================
    Commonplace — native (Tauri 2) frontend.
@@ -287,6 +358,7 @@ async function refreshVault(){
     } catch(_){}
   }
   indexVault(dirHandle);
+  refreshBacklinks();   // external edits may have added/removed links here
 }
 
 /* ============================================================
@@ -326,6 +398,66 @@ const cpTheme = C.EditorView.theme({
   ".cm-placeholder": { color: "var(--ink-faint)", fontStyle: "normal" },
 });
 
+/* ---- [[wikilinks]] ---- resolve a title to a file, autocomplete on "[[",
+   decorate spans, and Ctrl-click to follow (creating the note if missing). */
+const noteTitle = f => f.name.replace(/\.md$/i, "");
+function resolveLink(title){
+  const lc = title.trim().toLowerCase();
+  if (!lc) return null;
+  return files.find(f => noteTitle(f).toLowerCase() === lc)
+      || files.find(f => f.rel.replace(/\.md$/i, "").toLowerCase() === lc)
+      || null;
+}
+function followLink(title){
+  const f = resolveLink(title);
+  if (f) openFile(f);
+  else newNote(title);     // unresolved -> create-and-open (vault root)
+}
+// autocomplete: after "[[", suggest note titles; inserting closes the "]]"
+function wikilinkComplete(context){
+  const before = context.matchBefore(/\[\[[^\[\]\n]*/);
+  if (!before) return null;
+  return {
+    from: before.from + 2,
+    options: files.map(f => ({
+      label: noteTitle(f),
+      type: "text",
+      detail: f.rel !== f.name ? f.rel.replace(/\.md$/i, "") : undefined,
+      apply: noteTitle(f) + "]]",
+    })),
+    validFor: /^[^\[\]\n]*$/,
+  };
+}
+const wikiRE = /\[\[([^\[\]\n]+)\]\]/g;
+const wikilinkPlugin = C.ViewPlugin.fromClass(class {
+  constructor(view){ this.decorations = this.build(view); }
+  update(u){ if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view); }
+  build(view){
+    const b = new C.RangeSetBuilder();
+    for (const { from, to } of view.visibleRanges){
+      const text = view.state.sliceDoc(from, to);
+      wikiRE.lastIndex = 0;
+      let m;
+      while ((m = wikiRE.exec(text))){
+        const start = from + m.index, resolved = !!resolveLink(m[1]);
+        b.add(start, start + m[0].length, C.Decoration.mark({
+          class: resolved ? "cm-wikilink" : "cm-wikilink cm-wikilink-unresolved",
+          attributes: { "data-link": m[1], title: resolved ? "Ctrl-click to open" : "Ctrl-click to create" },
+        }));
+      }
+    }
+    return b.finish();
+  }
+}, { decorations: v => v.decorations });
+const wikilinkClick = C.EditorView.domEventHandlers({
+  mousedown(e){
+    if (!(e.metaKey || e.ctrlKey)) return false;
+    const el = e.target.closest && e.target.closest(".cm-wikilink");
+    if (el){ const title = el.getAttribute("data-link"); if (title){ e.preventDefault(); followLink(title); return true; } }
+    return false;
+  },
+});
+
 view = new C.EditorView({
   parent: $("#editor"),
   extensions: [
@@ -339,6 +471,9 @@ view = new C.EditorView({
     C.EditorView.contentAttributes.of({ spellcheck: "true", "aria-label": "note" }),
     C.placeholder("Start writing…"),
     cpTheme,
+    wikilinkPlugin,
+    wikilinkClick,
+    C.autocompletion({ override: [wikilinkComplete] }),
     C.EditorView.updateListener.of(u => {
       if (loading || !u.docChanged) return;
       dirty = true;
@@ -403,6 +538,7 @@ async function openFile(f, caretEnd){
   edSet(text, caretEnd); dirty = false;
   $("#path").textContent = f.rel; setState("markdown");
   openStage(); view.requestMeasure(); view.focus();
+  refreshBacklinks();
 }
 async function save(){ await flushSave(true); }   // Ctrl+S = save + re-index now
 
@@ -455,22 +591,44 @@ async function newNote(name){
     $("#new-foot").textContent = (e && e.message) ? e.message : String(e);
   }
 }
+/* quick capture (fleeting note) — Ctrl+Shift+N. Zero friction: auto-named into
+   inbox/ and opened immediately, no prompt. Seconds in the name avoid collisions
+   on rapid capture. */
+async function quickCapture(){
+  if (!dirHandle){ doOpenFolder(); return; }
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  const name = `inbox/${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  await newNote(name);
+}
 function closeOverlays(){ document.querySelectorAll(".overlay").forEach(o => o.classList.remove("open")); }
 function rowsOf(box){ return [...box.querySelectorAll(".row")]; }
 function activeIdx(box){ return rowsOf(box).findIndex(r => r.classList.contains("active")); }
 function setActive(box, i){ const rows = rowsOf(box); if (!rows.length) return; i = (i + rows.length) % rows.length; rows.forEach(r => r.classList.remove("active")); rows[i].classList.add("active"); rows[i].scrollIntoView({ block:"nearest" }); }
 
-/* quick open */
+/* quick open — folder-aware: matches are grouped under their top-level folder
+   (root notes first). Group headers aren't selectable, so arrow-key nav still
+   moves only between files. */
+const topFolder = rel => { const i = rel.indexOf("/"); return i === -1 ? "" : rel.slice(0, i); };
 function renderOpenRows(filter){
   const box = $("#open-rows"); const q = filter.toLowerCase();
-  const matches = files.filter(f => f.rel.toLowerCase().includes(q)).slice(0, 50);
+  const matches = files.filter(f => f.rel.toLowerCase().includes(q)).slice(0, 80);
+  matches.sort((a, b) => {
+    const fa = topFolder(a.rel), fb = topFolder(b.rel);
+    return fa !== fb ? fa.localeCompare(fb) : a.rel.toLowerCase().localeCompare(b.rel.toLowerCase());
+  });
   box.innerHTML = "";
-  matches.forEach((f, idx) => {
+  let curFolder = null, first = true;
+  matches.forEach(f => {
+    const folder = topFolder(f.rel);
+    if (folder !== curFolder){
+      curFolder = folder;
+      if (folder){ const h = document.createElement("div"); h.className = "group"; h.textContent = folder; box.appendChild(h); }
+    }
     const div = document.createElement("div");
-    div.className = "row" + (idx === 0 ? " active" : "");
+    div.className = "row" + (first ? " active" : ""); first = false;
     div.innerHTML = `<span class="lbl"></span><span class="hint"></span>`;
     div.querySelector(".lbl").textContent = f.name;
-    div.querySelector(".hint").textContent = f.rel;
+    div.querySelector(".hint").textContent = folder ? f.rel.slice(folder.length + 1) : f.rel;
     div.addEventListener("click", () => { closeOverlays(); openFile(f); });
     div.dataset.path = f.path;
     box.appendChild(div);
@@ -486,6 +644,7 @@ function runAction(act){
   closeOverlays();
   if (act === "ask")            ask(q);
   else if (act === "related")   findRelated();
+  else if (act === "suggest")   suggestLinks();
   else if (act === "summarize") summarize();
   else if (act === "continue")  continueWriting();
   else if (act === "rewrite")   rewriteSelection();
@@ -542,6 +701,78 @@ async function findRelated(){
   } catch(e){ drawerErr(body, e); }
 }
 
+/* Suggest links — semantic neighbors of the current note, each insertable as a
+   [[link]] with one click. The ranked list is the product; a one-line "why it
+   connects" from the local model is layered on after and degrades to nothing if
+   the model is slow/unavailable, so the list is always useful on its own. */
+async function suggestLinks(){
+  if (!current) return;
+  const body = showDrawer("Suggest links · " + current.name);
+  const note = document.createElement("div"); note.className = "answer thinking"; note.textContent = "finding connections by meaning…"; body.appendChild(note);
+  let hits;
+  try {
+    hits = await invoke("related_notes", { dir: dirHandle, current: current.path, text: edGet().slice(0, 2000), k: 6 });
+  } catch(e){ drawerErr(body, e); return; }
+  note.remove();
+  if (!hits.length){ body.innerHTML = `<div class="answer thinking">No connections yet — add or write more notes.</div>`; return; }
+  const rows = hits.map(h => {
+    const title = (files.find(x => x.path === h.path)?.name || h.name).replace(/\.md$/i, "");
+    const el = document.createElement("div"); el.className = "rel";
+    el.innerHTML = `<div class="n"></div><div class="why"></div><div class="s"></div>`;
+    el.querySelector(".n").textContent = title;
+    el.querySelector(".s").textContent = h.text.slice(0, 160);
+    el.title = `Insert [[${title}]] at the cursor`;
+    el.addEventListener("click", () => { insertLink(title); el.classList.add("inserted"); });
+    body.appendChild(el);
+    return { el, title, h };
+  });
+  // optional rationale layer — best-effort, never blocks the list above
+  try {
+    const list = rows.map((r, i) => `${i + 1}. ${r.title}: ${r.h.text.slice(0, 200)}`).join("\n");
+    let acc = "";
+    await chatStream([
+      { role:"system", content:"For each numbered note, write ONE short line on how it connects to the user's current note. Reply as a numbered list matching the input numbers — nothing else." },
+      { role:"user", content:`Current note "${noteTitle(current)}":\n${edGet().slice(0, 1200)}\n\nCandidates:\n${list}` }
+    ], t => { acc += t; });
+    const lines = acc.split("\n").map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean);
+    rows.forEach((r, i) => { if (lines[i]) r.el.querySelector(".why").textContent = lines[i]; });
+  } catch(_){ /* rationale is optional */ }
+}
+function insertLink(title){
+  view.focus();
+  edInsert(`[[${title}]]`);
+  dirty = true; setState("edited"); scheduleSave();
+}
+
+/* backlinks — notes whose [[links]] resolve to the open note. Pure file walk
+   (no engine), refreshed on open and after external changes. */
+let backlinkData = [];
+async function refreshBacklinks(){
+  const strip = $("#backlinks");
+  if (!current || !dirHandle){ strip.classList.add("hidden"); return; }
+  let all;
+  try { all = await invoke("vault_links", { dir: dirHandle }); }
+  catch(_){ strip.classList.add("hidden"); return; }
+  const here = current.path;
+  backlinkData = all.filter(n => n.rel !== current.rel
+    && n.links.some(l => { const f = resolveLink(l); return f && f.path === here; }));
+  if (!backlinkData.length){ strip.classList.add("hidden"); strip.textContent = ""; return; }
+  strip.textContent = backlinkData.length + (backlinkData.length === 1 ? " linked reference" : " linked references");
+  strip.classList.remove("hidden");
+}
+$("#backlinks").addEventListener("click", () => {
+  if (!backlinkData.length) return;
+  const body = showDrawer("Linked references · " + current.name);
+  backlinkData.forEach(n => {
+    const f = files.find(x => x.rel === n.rel);
+    const el = document.createElement("div"); el.className = "rel";
+    el.innerHTML = `<div class="n"></div>`;
+    el.querySelector(".n").textContent = n.name;
+    el.addEventListener("click", () => { $("#drawer").classList.remove("open"); if (f) openFile(f); });
+    body.appendChild(el);
+  });
+});
+
 async function summarize(){
   if (!current) return;
   const body = showDrawer("Summary · " + current.name);
@@ -594,9 +825,119 @@ function slashCheck(v){
   if (line.text === "/" && pos === line.to){
     v.dispatch({ changes:{ from: line.from, to: line.to, insert: "" } });
     openOverlay("#ov-ask");
-    setActive($("#ask-rows"), 3); // highlight "Continue writing"
+    setActive($("#ask-rows"), 4); // highlight "Continue writing"
   }
 }
+
+/* ============================================================
+   KNOWLEDGE MAP — summoned full-screen graph (Ctrl+G). Nodes are notes;
+   explicit edges come from [[links]] (vault_links), semantic edges from
+   mean-pooled embeddings (semantic_edges). Rendered on canvas via the
+   vendored force-graph. Click a node to open it.
+   ============================================================ */
+let graphInstance = null, graphRaw = null, showSemantic = true;
+async function openGraph(){
+  if (!dirHandle || !window.ForceGraph) return;
+  const ov = $("#graph"); ov.classList.add("open");
+  const host = $("#graph-canvas");
+  let links;
+  try { links = await invoke("vault_links", { dir: dirHandle }); }
+  catch(e){ ov.classList.remove("open"); return; }
+
+  const nodes = links.map(n => ({ id: n.rel, name: n.name.replace(/\.md$/i, "") }));
+  // map a link title (or rel) -> the note's rel, so [[Title]] resolves to a node
+  const titleToRel = {};
+  links.forEach(n => {
+    titleToRel[n.name.replace(/\.md$/i, "").toLowerCase()] = n.rel;
+    titleToRel[n.rel.replace(/\.md$/i, "").toLowerCase()] = n.rel;
+  });
+  const seen = new Set(); const explicit = [];
+  links.forEach(n => n.links.forEach(t => {
+    const dest = titleToRel[t.trim().toLowerCase()];
+    if (dest && dest !== n.rel){
+      const key = n.rel < dest ? n.rel + "|" + dest : dest + "|" + n.rel;
+      if (!seen.has(key)){ seen.add(key); explicit.push({ source: n.rel, target: dest }); }
+    }
+  }));
+  let semantic = [];
+  try {
+    const se = await invoke("semantic_edges", { dir: dirHandle, k: 3, threshold: 0.7 });
+    semantic = se.map(e => ({ source: e.s, target: e.d, semantic: true }));
+  } catch(_){}   // semantic edges need the index; degrade to explicit-only
+  graphRaw = { nodes, explicit, semantic };
+
+  const css = getComputedStyle(document.body), col = v => css.getPropertyValue(v).trim();
+  const inkC = col("--ink"), accentC = col("--accent"), faintC = col("--ink-faint");
+  if (!graphInstance){
+    graphInstance = window.ForceGraph()(host)
+      .nodeId("id").nodeLabel("name").nodeRelSize(4)
+      .linkWidth(l => l.semantic ? 0.5 : 1.2)
+      .onNodeClick(node => { const f = files.find(x => x.rel === node.id); closeGraph(); if (f) openFile(f); })
+      .nodeCanvasObjectMode(() => "after")
+      .nodeCanvasObject((node, ctx, scale) => {
+        ctx.font = `${11 / scale}px ui-monospace, monospace`;
+        ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = inkC;
+        ctx.fillText(node.name, node.x, node.y + 5);
+      });
+  }
+  graphInstance.nodeColor(() => accentC).linkColor(l => l.semantic ? faintC : accentC);
+  graphInstance.width(host.clientWidth).height(host.clientHeight).resumeAnimation();
+  setGraphData();
+}
+function setGraphData(){
+  if (!graphInstance || !graphRaw) return;
+  const ls = (showSemantic ? graphRaw.explicit.concat(graphRaw.semantic) : graphRaw.explicit).map(l => ({ ...l }));
+  graphInstance.graphData({ nodes: graphRaw.nodes, links: ls });
+}
+function closeGraph(){ $("#graph").classList.remove("open"); if (graphInstance) graphInstance.pauseAnimation(); }
+$("#graph-x").addEventListener("click", closeGraph);
+$("#graph-semantic").addEventListener("change", e => { showSemantic = e.target.checked; setGraphData(); });
+
+/* ============================================================
+   FILE TREE — summoned left panel (Ctrl+\). A collapsible view of the vault's
+   folder structure, built from the flat `rel` paths. Click a file to open it.
+   Summoned and dismissable — never persistent chrome over the writing surface.
+   ============================================================ */
+function buildTree(list){
+  const root = { dirs: {}, files: [] };
+  list.forEach(f => {
+    const parts = f.rel.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++){
+      node.dirs[parts[i]] = node.dirs[parts[i]] || { dirs: {}, files: [] };
+      node = node.dirs[parts[i]];
+    }
+    node.files.push(f);
+  });
+  return root;
+}
+function renderTree(node, container, depth){
+  Object.keys(node.dirs).sort((a, b) => a.localeCompare(b)).forEach(name => {
+    const row = document.createElement("div");
+    row.className = "tdir"; row.style.paddingLeft = (depth * 14 + 8) + "px";
+    row.textContent = "▾ " + name;
+    const kids = document.createElement("div"); kids.className = "tkids show";
+    row.addEventListener("click", () => { const open = kids.classList.toggle("show"); row.textContent = (open ? "▾ " : "▸ ") + name; });
+    container.appendChild(row); container.appendChild(kids);
+    renderTree(node.dirs[name], kids, depth + 1);
+  });
+  node.files.slice().sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).forEach(f => {
+    const row = document.createElement("div");
+    row.className = "tfile"; row.style.paddingLeft = (depth * 14 + 20) + "px";
+    row.textContent = f.name.replace(/\.md$/i, "");
+    row.title = f.rel;
+    row.addEventListener("click", () => { closeTree(); openFile(f); });
+    container.appendChild(row);
+  });
+}
+function openTree(){
+  if (!dirHandle || !files.length) return;
+  const body = $("#tree-body"); body.innerHTML = "";
+  renderTree(buildTree(files), body, 0);
+  $("#tree").classList.add("open");
+}
+function closeTree(){ $("#tree").classList.remove("open"); }
+$("#tree-x").addEventListener("click", closeTree);
 
 /* ============================================================
    KEYS + TOGGLES
@@ -604,12 +945,15 @@ function slashCheck(v){
 document.addEventListener("keydown", e => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === "o"){ e.preventDefault(); doOpenFolder(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === "n"){ e.preventDefault(); quickCapture(); return; }
   if (mod && e.key.toLowerCase() === "n"){ e.preventDefault(); newNotePrompt(); return; }
   if (mod && e.key.toLowerCase() === "s"){ e.preventDefault(); save(); return; }
   if (mod && e.key.toLowerCase() === "p"){ e.preventDefault(); if (files.length) openOverlay("#ov-open"); return; }
   if (mod && e.key.toLowerCase() === "k"){ e.preventDefault(); openOverlay("#ov-ask"); return; }
+  if (mod && e.key.toLowerCase() === "g"){ e.preventDefault(); openGraph(); return; }
+  if (mod && e.key === "\\"){ e.preventDefault(); $("#tree").classList.contains("open") ? closeTree() : openTree(); return; }
   if (mod && e.key === "."){ e.preventDefault(); document.body.classList.toggle("focus"); return; }
-  if (e.key === "Escape"){ if ($("#ov-setup").classList.contains("open")) return; closeOverlays(); $("#drawer").classList.remove("open"); document.body.classList.remove("focus"); return; }
+  if (e.key === "Escape"){ if ($("#ov-setup").classList.contains("open")) return; closeOverlays(); closeGraph(); closeTree(); $("#drawer").classList.remove("open"); document.body.classList.remove("focus"); return; }
 
   const openOv = document.querySelector(".overlay.open");
   if (!openOv) return;

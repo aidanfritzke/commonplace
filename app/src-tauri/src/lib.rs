@@ -136,35 +136,55 @@ fn write_file(path: String, content: String, vault: tauri::State<Vault>) -> Resu
     std::fs::write(&safe, content).map_err(|e| e.to_string())
 }
 
-/// Create a new note directly under `root`. The name is reduced to a single
-/// file-name component (no directories, no traversal), gets a `.md` extension,
-/// and is seeded with a title heading. `root` must be the canonical vault root.
+/// Create a new note under `root`, getting a `.md` extension and a title
+/// heading. A "clean" relative path (only normal components) may carry one or
+/// more subdirectories — they're created under the vault (used by quick-capture,
+/// e.g. `inbox/2026-06-16-1432`). Any name containing `..`, an absolute root, or
+/// a path prefix is reduced to its bare filename in the vault root, so traversal
+/// can never escape. `root` must be the canonical vault root.
 fn create_note(root: &std::path::Path, name: &str) -> Result<FileEntry, String> {
-    // keep only the final path component — strips any dirs/`..` the name carries
-    let stem = std::path::Path::new(name.trim())
+    use std::path::{Component, PathBuf};
+    let raw = std::path::Path::new(name.trim());
+    let clean = raw
+        .components()
+        .all(|c| matches!(c, Component::Normal(_)));
+    let mut relpath: PathBuf = if clean {
+        raw.to_path_buf()
+    } else {
+        // traversal/absolute -> keep only the filename, drop the dangerous parts
+        PathBuf::from(raw.file_name().ok_or("invalid name")?)
+    };
+
+    // ensure a non-empty `.md` filename (preserving any clean subdirectory)
+    let fname = relpath
         .file_name()
-        .and_then(|s| s.to_str())
         .ok_or("invalid name")?
-        .to_string();
-    if stem.is_empty() {
+        .to_string_lossy()
+        .into_owned();
+    if fname.trim().is_empty() {
         return Err("name is empty".into());
     }
-    let mut fname = stem;
     if !fname.to_lowercase().ends_with(".md") {
-        fname.push_str(".md");
+        relpath.set_file_name(format!("{fname}.md"));
     }
 
-    let path = root.join(&fname);
-    // belt-and-suspenders: the parent must be exactly the (canonical) vault root
-    let parent = std::fs::canonicalize(path.parent().ok_or("invalid path")?)
-        .map_err(|e| e.to_string())?;
-    if parent != root {
+    let path = root.join(&relpath);
+    // create any subdirectory the (clean) name carried, then confine: the
+    // canonical parent must sit inside the canonical vault root.
+    let parent = path.parent().ok_or("invalid path")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let cparent = std::fs::canonicalize(parent).map_err(|e| e.to_string())?;
+    let croot = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    if !cparent.starts_with(&croot) {
         return Err("refused: path is outside the open vault".into());
     }
     if path.exists() {
         return Err("a note with that name already exists".into());
     }
-    let title = fname.strip_suffix(".md").unwrap_or(&fname);
+    let title = relpath
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     std::fs::write(&path, format!("# {title}\n\n")).map_err(|e| e.to_string())?;
 
     // `root` is canonicalized, which on Windows carries a `\\?\` verbatim prefix.
@@ -178,8 +198,11 @@ fn create_note(root: &std::path::Path, name: &str) -> Result<FileEntry, String> 
 
     Ok(FileEntry {
         path: path_str,
-        name: fname.clone(),
-        rel: fname,
+        name: relpath
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        rel: relpath.to_string_lossy().replace('\\', "/"),
     })
 }
 
@@ -345,6 +368,8 @@ pub fn run() {
             index::index_vault,
             index::search_notes,
             index::related_notes,
+            index::vault_links,
+            index::semantic_edges,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Commonplace")
@@ -415,6 +440,27 @@ mod tests {
         // empty / dot names rejected
         assert!(create_note(&root, "   ").is_err());
         assert!(create_note(&root, "..").is_err());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn create_note_allows_clean_subdir_but_blocks_traversal() {
+        let base = std::env::temp_dir().join(format!("cp_subdir_{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let root = fs::canonicalize(&base).unwrap();
+
+        // a clean one-level subdir is created under the vault (quick-capture)
+        let e = create_note(&root, "inbox/2026-06-16-1432").unwrap();
+        assert_eq!(e.rel, "inbox/2026-06-16-1432.md"); // forward-slash, subdir kept
+        assert_eq!(e.name, "2026-06-16-1432.md");
+        assert!(root.join("inbox").join("2026-06-16-1432.md").exists());
+
+        // a name with traversal is reduced to its basename in root, never escapes
+        let e2 = create_note(&root, "../sneaky").unwrap();
+        assert_eq!(e2.rel, "sneaky.md");
+        assert!(root.join("sneaky.md").exists());
+        assert!(!base.join("..").join("sneaky.md").exists());
 
         let _ = fs::remove_dir_all(&base);
     }

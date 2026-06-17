@@ -14,10 +14,14 @@ app/src-tauri/resources/models/
 # Bundled llama.cpp engine (~46 MB of third-party binaries).
 # Repopulate with: app/scripts/fetch-engine.ps1
 app/src-tauri/resources/engine/
+# MCP server binary copied here at release-build time (built from src/bin/mcp.rs).
+app/src-tauri/resources/mcp.exe
 
 # ---- local scratch / working dirs (not part of the project) ----
 /_setup/
 /_staging/
+# v0.1.0 snapshot kept locally as a backup; canonical copy lives on GitHub.
+/archive/
 
 # ---- editor / Claude / OS ----
 /.claude/

@@ -32,6 +32,13 @@ pub struct Hit {
     pub text: String,
 }
 
+#[derive(Serialize)]
+pub struct NoteLinks {
+    pub rel: String,
+    pub name: String,
+    pub links: Vec<String>, // [[targets]] this note points at (deduped)
+}
+
 // manifest: vault -> (file path -> mtime seconds)
 type Manifest = HashMap<String, HashMap<String, i64>>;
 
@@ -99,6 +106,37 @@ fn chunk(text: &str) -> Vec<String> {
                 }
                 out.push(String::from_utf8_lossy(&p.as_bytes()[i..e]).into_owned());
                 i += 800;
+            }
+        }
+    }
+    out
+}
+
+// Extract [[wikilink]] targets from note text, in document order, deduped.
+// Ignores fenced code blocks; inner text with a stray '[' is skipped.
+fn extract_links(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(open) = rest.find("[[") {
+            let after = &rest[open + 2..];
+            match after.find("]]") {
+                Some(close) => {
+                    let inner = after[..close].trim();
+                    if !inner.is_empty() && !inner.contains('[') && !out.iter().any(|x| x == inner) {
+                        out.push(inner.to_string());
+                    }
+                    rest = &after[close + 2..];
+                }
+                None => break,
             }
         }
     }
@@ -451,9 +489,156 @@ pub async fn related_notes(
     Ok(read_hits(&batches, Some(&current), k))
 }
 
+/// Walk the vault and return each note's outbound [[wikilinks]]. Pure file I/O
+/// (no embeddings/engine), so it works regardless of model state. Feeds both the
+/// backlinks panel and the knowledge-map's explicit edges on the frontend.
+#[tauri::command]
+pub fn vault_links(dir: String) -> Result<Vec<NoteLinks>, String> {
+    let mut out = Vec::new();
+    for f in walk_markdown(Path::new(&dir)) {
+        let text = std::fs::read_to_string(&f.path).unwrap_or_default();
+        out.push(NoteLinks {
+            rel: f.rel,
+            name: f.name,
+            links: extract_links(&text),
+        });
+    }
+    Ok(out)
+}
+
+#[derive(Serialize)]
+pub struct SemanticEdge {
+    pub s: String, // source note rel
+    pub d: String, // dest note rel
+    pub score: f32,
+}
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+/// Semantic edges for the knowledge map: for each note, its top-`k` nearest other
+/// notes by mean-pooled embedding, above a cosine `threshold`. Reads the stored
+/// vectors only (no engine needed), aggregates per note, computes pairwise cosine,
+/// and dedups into undirected edges. Milliseconds for a personal vault. Notes too
+/// short to have any embedded chunk simply have no semantic edges (still a node via
+/// `vault_links`).
+#[tauri::command]
+pub async fn semantic_edges(
+    app: tauri::AppHandle,
+    dir: String,
+    k: usize,
+    threshold: f32,
+) -> Result<Vec<SemanticEdge>, String> {
+    let conn = connect(&app).await?;
+    let table = match open_chunks(&conn).await? {
+        Some(t) => t,
+        None => return Ok(vec![]),
+    };
+    let stream = table
+        .query()
+        .only_if(format!("vault = '{}'", esc(&dir)))
+        .select(Select::Columns(vec!["rel".into(), "vector".into()]))
+        .limit(10_000_000)
+        .execute()
+        .await
+        .map_err(|e| e.to_string())?;
+    let batches = stream.try_collect::<Vec<_>>().await.map_err(|e| e.to_string())?;
+
+    // mean-pool the per-chunk vectors into one vector per note
+    let mut sums: HashMap<String, Vec<f32>> = HashMap::new();
+    let mut counts: HashMap<String, f32> = HashMap::new();
+    for b in &batches {
+        let ri = b.schema().index_of("rel").map_err(|e| e.to_string())?;
+        let vi = b.schema().index_of("vector").map_err(|e| e.to_string())?;
+        let rels = b
+            .column(ri)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or("rel column type")?;
+        let vecs = b
+            .column(vi)
+            .as_any()
+            .downcast_ref::<FixedSizeListArray>()
+            .ok_or("vector column type")?;
+        for row in 0..b.num_rows() {
+            let rel = rels.value(row).to_string();
+            let inner = vecs.value(row);
+            let f = inner
+                .as_any()
+                .downcast_ref::<arrow_array::Float32Array>()
+                .ok_or("vector item type")?;
+            let entry = sums.entry(rel.clone()).or_insert_with(|| vec![0.0; f.len()]);
+            for (i, x) in f.values().iter().enumerate() {
+                entry[i] += *x;
+            }
+            *counts.entry(rel).or_insert(0.0) += 1.0;
+        }
+    }
+
+    // mean + L2-normalize, so cosine similarity is just the dot product
+    let notes: Vec<(String, Vec<f32>)> = sums
+        .into_iter()
+        .map(|(rel, mut v)| {
+            let c = counts[&rel];
+            for x in &mut v {
+                *x /= c;
+            }
+            let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if norm > 0.0 {
+                for x in &mut v {
+                    *x /= norm;
+                }
+            }
+            (rel, v)
+        })
+        .collect();
+
+    // top-k nearest per note above threshold, deduped to undirected edges
+    let n = notes.len();
+    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut edges: Vec<SemanticEdge> = Vec::new();
+    for i in 0..n {
+        let mut sims: Vec<(usize, f32)> = (0..n)
+            .filter(|&j| j != i)
+            .map(|j| (j, dot(&notes[i].1, &notes[j].1)))
+            .filter(|&(_, s)| s >= threshold)
+            .collect();
+        sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        for (j, s) in sims.into_iter().take(k) {
+            let key = if i < j { (i, j) } else { (j, i) };
+            if seen.insert(key) {
+                edges.push(SemanticEdge {
+                    s: notes[i].0.clone(),
+                    d: notes[j].0.clone(),
+                    score: s,
+                });
+            }
+        }
+    }
+    Ok(edges)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extract_links_finds_targets_dedups_and_skips_fences() {
+        let t = "See [[Alpha]] and [[ Beta Note ]].\n\n\
+                 ```\n[[NotALink]]\n```\n\
+                 More [[Gamma]] then [[Alpha]] again.";
+        let ls = extract_links(t);
+        assert_eq!(ls, vec!["Alpha", "Beta Note", "Gamma"]); // order preserved, deduped
+        assert!(!ls.iter().any(|x| x == "NotALink")); // inside a code fence
+    }
+
+    #[test]
+    fn extract_links_handles_no_links_and_multibyte() {
+        assert!(extract_links("plain note, no links — café ☕").is_empty());
+        // a multibyte char right before a link must not panic on slicing
+        assert_eq!(extract_links("café [[Idée]]"), vec!["Idée"]);
+    }
 
     #[test]
     fn esc_doubles_single_quotes() {

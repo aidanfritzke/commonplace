@@ -9,3 +9,4 @@
 - Keep the model on a leash: text in, text out, no tools. The retrieval does the heavy
   lifting, not the model's memory.
 - Privacy is the whole point — nothing leaves the machine.
+- [[prompt-patterns]]

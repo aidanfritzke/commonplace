@@ -8,9 +8,10 @@ dependencies** anywhere in the project.
 
 What is and isn't redistributed:
 
-- **In this repository:** the CodeMirror 6 editor is vendored as
-  `app/src/vendor/codemirror.js` (a minified bundle). Its attribution banner is
-  at the top of that file. Everything else listed here is *referenced*, not
+- **In this repository:** the CodeMirror 6 editor and the force-graph renderer
+  are vendored as `app/src/vendor/codemirror.js` and
+  `app/src/vendor/force-graph.js` (minified bundles). Each has an attribution
+  banner at the top of the file. Everything else listed here is *referenced*, not
   copied into the repo.
 - **Fetched at build time:** the llama.cpp engine binaries
   (`app/scripts/fetch-engine.ps1` → `app/src-tauri/resources/engine/`).
@@ -22,6 +23,7 @@ What is and isn't redistributed:
 | Component | Role | License | Redistributed? |
 |-----------|------|---------|----------------|
 | [CodeMirror 6](https://codemirror.net/) | editor | MIT | yes (`app/src/vendor/codemirror.js`) |
+| [force-graph](https://github.com/vasturiano/force-graph) (+ [d3-force](https://github.com/d3/d3-force) and other d3 modules) | knowledge-map renderer | MIT / ISC / BSD-3-Clause | yes (`app/src/vendor/force-graph.js`) |
 | [llama.cpp](https://github.com/ggml-org/llama.cpp) | inference engine | MIT | in the installer (fetched at build) |
 | [Tauri](https://tauri.app/) (+ plugins) | app shell | MIT / Apache-2.0 | compiled into the binary |
 | [LanceDB](https://github.com/lancedb/lancedb) / Lance / Apache Arrow / DataFusion | vector index | Apache-2.0 | compiled into the binary |
@@ -46,8 +48,10 @@ Both model licenses permit free use, commercial use, and redistribution.
 
 ## MIT License
 
-Applies to Commonplace, CodeMirror, llama.cpp, Phi-3.5-mini, Tauri, and the many
-MIT-licensed crates and packages above.
+Applies to Commonplace, CodeMirror, force-graph, llama.cpp, Phi-3.5-mini, Tauri,
+and the many MIT-licensed crates and packages above. force-graph's d3
+dependencies are ISC / BSD-3-Clause (permissive; used unmodified, with attribution
+in the vendored bundle's banner and via the upstream links above).
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy
